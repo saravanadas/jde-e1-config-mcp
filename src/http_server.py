@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple HTTP Server for JDE E1 MCP - Railway Deployment
+With Bearer Token Authentication
 """
 
 import json
@@ -10,6 +11,9 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("jde-e1-http")
+
+# Bearer token from environment variable
+API_TOKEN = os.environ.get("API_TOKEN", "")
 
 # Import knowledge base data
 try:
@@ -157,7 +161,33 @@ class JDEHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
     
+    def _check_auth(self):
+        """Check bearer token authentication."""
+        # If no token is configured, allow all requests
+        if not API_TOKEN:
+            return True
+        
+        auth_header = self.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]  # Remove "Bearer " prefix
+            return token == API_TOKEN
+        return False
+    
+    def _send_unauthorized(self):
+        """Send 401 Unauthorized response."""
+        self._send_json({"error": "Unauthorized. Bearer token required."}, 401)
+    
     def do_GET(self):
+        # Health check doesn't require auth
+        if self.path == "/health":
+            self._send_json({"status": "healthy", "service": "jde-e1-config-mcp"})
+            return
+        
+        # All other endpoints require auth
+        if not self._check_auth():
+            self._send_unauthorized()
+            return
+        
         if self.path == "/" or self.path == "":
             self._send_json({
                 "name": "JDE E1 9.2 R24 Configuration Research MCP",
@@ -167,8 +197,6 @@ class JDEHandler(BaseHTTPRequestHandler):
                 "resources_count": len(RESOURCES),
                 "prompts_count": len(PROMPTS)
             })
-        elif self.path == "/health":
-            self._send_json({"status": "healthy", "service": "jde-e1-config-mcp"})
         elif self.path == "/tools":
             self._send_json({"tools": TOOLS})
         elif self.path == "/resources":
@@ -179,6 +207,11 @@ class JDEHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Not found"}, 404)
     
     def do_POST(self):
+        # Check auth for all POST requests
+        if not self._check_auth():
+            self._send_unauthorized()
+            return
+        
         if self.path == "/tools/call":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length).decode()
@@ -195,13 +228,19 @@ class JDEHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
 
 def main():
     port = int(os.environ.get("PORT", 8000))
     server = HTTPServer(("0.0.0.0", port), JDEHandler)
+    
+    if API_TOKEN:
+        logger.info(f"Bearer token authentication ENABLED")
+    else:
+        logger.info(f"Bearer token authentication DISABLED (no API_TOKEN set)")
+    
     logger.info(f"Starting JDE E1 MCP HTTP Server on 0.0.0.0:{port}")
     print(f"Server running on port {port}", flush=True)
     server.serve_forever()
