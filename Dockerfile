@@ -11,16 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
-COPY src/ ./src/
-COPY pyproject.toml .
+# Copy ALL source files (including README.md needed by pyproject.toml)
+COPY . .
 
-# Install the package
-RUN pip install --no-cache-dir -e .
-
-# Expose port for HTTP transport (if needed)
+# Expose port for HTTP transport
 ENV PORT=8000
 EXPOSE 8000
 
-# Run the MCP server
-CMD ["python", "-m", "src.server"]
+# Run the HTTP server for Railway
+CMD ["python", "-m", "src.http_server"]
