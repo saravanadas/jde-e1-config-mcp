@@ -6,7 +6,6 @@ With Bearer Token Authentication
 
 import json
 import os
-import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import logging
 
@@ -16,63 +15,32 @@ logger = logging.getLogger("jde-e1-http")
 # Bearer token from environment variable
 API_TOKEN = os.environ.get("API_TOKEN", "")
 
-# Track import status for debugging
-IMPORT_STATUS = {
-    "knowledge_base": False,
-    "environment_config": False,
-    "troubleshooting": False,
-    "errors": []
-}
-
-# Initialize empty defaults
-INSTALLATION_PREREQUISITES = {}
-INSTALLATION_SEQUENCE = {}
-ENVIRONMENT_CONFIG = {}
-CENTRALIZED_CONFIGURATION = {}
-SERVER_MANAGER_CONFIG = {}
-ESU_ASU_REQUIREMENTS = {}
-TROUBLESHOOTING_GUIDE = {}
-LOG_ANALYSIS = {}
-CONFIGURATION_UTILITIES = {}
-
-# Import knowledge base data with detailed error tracking
+# Import knowledge base data
 try:
     from .knowledge_base import INSTALLATION_PREREQUISITES, INSTALLATION_SEQUENCE
-    IMPORT_STATUS["knowledge_base"] = True
-    logger.info(f"knowledge_base imported: PREREQUISITES={len(INSTALLATION_PREREQUISITES)} items, SEQUENCE={len(INSTALLATION_SEQUENCE)} items")
-except Exception as e:
-    error_msg = f"knowledge_base import failed: {type(e).__name__}: {e}"
-    IMPORT_STATUS["errors"].append(error_msg)
-    logger.error(error_msg)
-
-try:
     from .environment_config import (
         ENVIRONMENT_CONFIG,
         CENTRALIZED_CONFIGURATION,
         SERVER_MANAGER_CONFIG,
         ESU_ASU_REQUIREMENTS,
     )
-    IMPORT_STATUS["environment_config"] = True
-    logger.info(f"environment_config imported: ENV_CONFIG={len(ENVIRONMENT_CONFIG)} items")
-except Exception as e:
-    error_msg = f"environment_config import failed: {type(e).__name__}: {e}"
-    IMPORT_STATUS["errors"].append(error_msg)
-    logger.error(error_msg)
-
-try:
     from .troubleshooting import (
         TROUBLESHOOTING_GUIDE,
         LOG_ANALYSIS,
         CONFIGURATION_UTILITIES,
     )
-    IMPORT_STATUS["troubleshooting"] = True
-    logger.info(f"troubleshooting imported: GUIDE={len(TROUBLESHOOTING_GUIDE)} items")
-except Exception as e:
-    error_msg = f"troubleshooting import failed: {type(e).__name__}: {e}"
-    IMPORT_STATUS["errors"].append(error_msg)
-    logger.error(error_msg)
-
-logger.info(f"Import status: {IMPORT_STATUS}")
+    logger.info("Successfully imported knowledge base modules")
+except ImportError as e:
+    logger.error(f"Import error: {e}")
+    INSTALLATION_PREREQUISITES = {}
+    INSTALLATION_SEQUENCE = {}
+    ENVIRONMENT_CONFIG = {}
+    CENTRALIZED_CONFIGURATION = {}
+    SERVER_MANAGER_CONFIG = {}
+    ESU_ASU_REQUIREMENTS = {}
+    TROUBLESHOOTING_GUIDE = {}
+    LOG_ANALYSIS = {}
+    CONFIGURATION_UTILITIES = {}
 
 # Tool definitions
 TOOLS = [
@@ -235,25 +203,6 @@ class JDEHandler(BaseHTTPRequestHandler):
             self._send_json({"resources": RESOURCES})
         elif self.path == "/prompts":
             self._send_json({"prompts": PROMPTS})
-        elif self.path == "/debug":
-            # Debug endpoint to check import status
-            self._send_json({
-                "import_status": IMPORT_STATUS,
-                "data_counts": {
-                    "INSTALLATION_PREREQUISITES": len(INSTALLATION_PREREQUISITES),
-                    "INSTALLATION_SEQUENCE": len(INSTALLATION_SEQUENCE),
-                    "ENVIRONMENT_CONFIG": len(ENVIRONMENT_CONFIG),
-                    "CENTRALIZED_CONFIGURATION": len(CENTRALIZED_CONFIGURATION),
-                    "SERVER_MANAGER_CONFIG": len(SERVER_MANAGER_CONFIG),
-                    "ESU_ASU_REQUIREMENTS": len(ESU_ASU_REQUIREMENTS),
-                    "TROUBLESHOOTING_GUIDE": len(TROUBLESHOOTING_GUIDE),
-                    "LOG_ANALYSIS": len(LOG_ANALYSIS),
-                    "CONFIGURATION_UTILITIES": len(CONFIGURATION_UTILITIES),
-                },
-                "environment_config_keys": list(ENVIRONMENT_CONFIG.keys()) if ENVIRONMENT_CONFIG else [],
-                "python_path": sys.path,
-                "working_directory": os.getcwd()
-            })
         else:
             self._send_json({"error": "Not found"}, 404)
     
@@ -293,7 +242,6 @@ def main():
         logger.info(f"Bearer token authentication DISABLED (no API_TOKEN set)")
     
     logger.info(f"Starting JDE E1 MCP HTTP Server on 0.0.0.0:{port}")
-    logger.info(f"Import status: {IMPORT_STATUS}")
     print(f"Server running on port {port}", flush=True)
     server.serve_forever()
 
