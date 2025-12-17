@@ -1,30 +1,42 @@
 #!/usr/bin/env python3
 """
-HTTP Server wrapper for JDE E1 MCP Server
-Provides HTTP/REST API for Railway deployment
+Simple HTTP Server for JDE E1 MCP - Railway Deployment
 """
 
 import json
 import os
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import logging
-from aiohttp import web
-
-# Import knowledge base data directly
-from .knowledge_base import INSTALLATION_PREREQUISITES, INSTALLATION_SEQUENCE
-from .environment_config import (
-    ENVIRONMENT_CONFIG,
-    CENTRALIZED_CONFIGURATION,
-    SERVER_MANAGER_CONFIG,
-    ESU_ASU_REQUIREMENTS,
-)
-from .troubleshooting import (
-    TROUBLESHOOTING_GUIDE,
-    LOG_ANALYSIS,
-    CONFIGURATION_UTILITIES,
-)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("jde-e1-http")
+
+# Import knowledge base data
+try:
+    from .knowledge_base import INSTALLATION_PREREQUISITES, INSTALLATION_SEQUENCE
+    from .environment_config import (
+        ENVIRONMENT_CONFIG,
+        CENTRALIZED_CONFIGURATION,
+        SERVER_MANAGER_CONFIG,
+        ESU_ASU_REQUIREMENTS,
+    )
+    from .troubleshooting import (
+        TROUBLESHOOTING_GUIDE,
+        LOG_ANALYSIS,
+        CONFIGURATION_UTILITIES,
+    )
+    logger.info("Successfully imported knowledge base modules")
+except ImportError as e:
+    logger.error(f"Import error: {e}")
+    INSTALLATION_PREREQUISITES = {}
+    INSTALLATION_SEQUENCE = {}
+    ENVIRONMENT_CONFIG = {}
+    CENTRALIZED_CONFIGURATION = {}
+    SERVER_MANAGER_CONFIG = {}
+    ESU_ASU_REQUIREMENTS = {}
+    TROUBLESHOOTING_GUIDE = {}
+    LOG_ANALYSIS = {}
+    CONFIGURATION_UTILITIES = {}
 
 # Tool definitions
 TOOLS = [
@@ -60,67 +72,8 @@ PROMPTS = [
 ]
 
 
-async def health_check(request: web.Request) -> web.Response:
-    """Health check endpoint."""
-    return web.json_response({
-        "status": "healthy",
-        "service": "jde-e1-config-mcp",
-        "version": "1.0.0"
-    })
-
-
-async def index_handler(request: web.Request) -> web.Response:
-    """Root endpoint with API documentation."""
-    return web.json_response({
-        "name": "JDE E1 9.2 R24 Configuration Research MCP",
-        "version": "1.0.0",
-        "status": "running",
-        "endpoints": {
-            "GET /": "API documentation",
-            "GET /health": "Health check",
-            "GET /tools": "List tools",
-            "GET /resources": "List resources",
-            "GET /prompts": "List prompts",
-            "POST /tools/call": "Call a tool",
-        },
-        "tools_count": len(TOOLS),
-        "resources_count": len(RESOURCES),
-        "prompts_count": len(PROMPTS)
-    })
-
-
-async def list_tools(request: web.Request) -> web.Response:
-    """List available tools."""
-    return web.json_response({"tools": TOOLS})
-
-
-async def list_resources(request: web.Request) -> web.Response:
-    """List available resources."""
-    return web.json_response({"resources": RESOURCES})
-
-
-async def list_prompts(request: web.Request) -> web.Response:
-    """List available prompts."""
-    return web.json_response({"prompts": PROMPTS})
-
-
-async def call_tool(request: web.Request) -> web.Response:
-    """Call a tool and return results."""
-    try:
-        data = await request.json()
-        tool_name = data.get("name", "")
-        arguments = data.get("arguments", {})
-        
-        result = execute_tool(tool_name, arguments)
-        return web.json_response({"result": result})
-    except Exception as e:
-        logger.error(f"Error calling tool: {e}")
-        return web.json_response({"error": str(e)}, status=500)
-
-
-def execute_tool(name: str, arguments: dict) -> dict:
+def execute_tool(name, arguments):
     """Execute a tool and return the result."""
-    
     if name == "research_installation_prerequisites":
         component = arguments.get("component", "all")
         platform = arguments.get("platform", "windows")
@@ -194,24 +147,64 @@ def execute_tool(name: str, arguments: dict) -> dict:
     return {"error": f"Unknown tool: {name}"}
 
 
-def create_app() -> web.Application:
-    """Create the aiohttp application."""
-    app = web.Application()
-    app.router.add_get("/", index_handler)
-    app.router.add_get("/health", health_check)
-    app.router.add_get("/tools", list_tools)
-    app.router.add_get("/resources", list_resources)
-    app.router.add_get("/prompts", list_prompts)
-    app.router.add_post("/tools/call", call_tool)
-    return app
+class JDEHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for JDE MCP API."""
+    
+    def _send_json(self, data, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+    
+    def do_GET(self):
+        if self.path == "/" or self.path == "":
+            self._send_json({
+                "name": "JDE E1 9.2 R24 Configuration Research MCP",
+                "version": "1.0.0",
+                "status": "running",
+                "tools_count": len(TOOLS),
+                "resources_count": len(RESOURCES),
+                "prompts_count": len(PROMPTS)
+            })
+        elif self.path == "/health":
+            self._send_json({"status": "healthy", "service": "jde-e1-config-mcp"})
+        elif self.path == "/tools":
+            self._send_json({"tools": TOOLS})
+        elif self.path == "/resources":
+            self._send_json({"resources": RESOURCES})
+        elif self.path == "/prompts":
+            self._send_json({"prompts": PROMPTS})
+        else:
+            self._send_json({"error": "Not found"}, 404)
+    
+    def do_POST(self):
+        if self.path == "/tools/call":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length).decode()
+            try:
+                data = json.loads(body)
+                result = execute_tool(data.get("name", ""), data.get("arguments", {}))
+                self._send_json({"result": result})
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+        else:
+            self._send_json({"error": "Not found"}, 404)
+    
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
 
 def main():
-    """Run the HTTP server."""
     port = int(os.environ.get("PORT", 8000))
-    logger.info(f"Starting JDE E1 MCP HTTP Server on port {port}")
-    app = create_app()
-    web.run_app(app, host="0.0.0.0", port=port)
+    server = HTTPServer(("0.0.0.0", port), JDEHandler)
+    logger.info(f"Starting JDE E1 MCP HTTP Server on 0.0.0.0:{port}")
+    print(f"Server running on port {port}", flush=True)
+    server.serve_forever()
 
 
 if __name__ == "__main__":
